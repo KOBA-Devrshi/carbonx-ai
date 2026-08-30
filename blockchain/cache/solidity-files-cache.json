@@ -1,0 +1,41 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "C:\\Users\\IT Warriors\\Downloads\\carbonx\\blockchain\\contracts\\CarbonDNARegistry.sol": {
+      "lastModificationDate": 1787908802868,
+      "contentHash": "0e8afc79c203cb002c9855a9ad55fcac",
+      "sourceName": "contracts/CarbonDNARegistry.sol",
+      "solcConfig": {
+        "version": "0.8.26",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "CarbonDNARegistry"
+      ]
+    }
+  }
+}

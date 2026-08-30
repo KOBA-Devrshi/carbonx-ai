@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #070C0A;
+}
+
+html, body {
+  background: #070C0A;
+  color: #E9F2EC;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(76,224,160,0.08), transparent),
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background-attachment: fixed;
+}
+
+.glass {
+  background: rgba(14, 23, 20, 0.6);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(28, 42, 36, 0.8);
+}
+
+.glow-accent { box-shadow: 0 0 40px -12px rgba(76,224,160,0.35); }
+
+::selection { background: rgba(76,224,160,.18); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #070C0A; }
+::-webkit-scrollbar-thumb { background: #1C2A24; border-radius: 6px; }
+
+.badge {
+  @apply inline-flex items-center gap-1.5 font-mono text-[11px] tracking-wide px-2.5 py-1 rounded-md uppercase;
+}
+.badge-low { @apply bg-accent/10 text-accent border border-accentDim; }
+.badge-medium { @apply bg-amber/10 text-amber border border-amberDim; }
+.badge-high, .badge-critical { @apply bg-danger/10 text-danger border border-dangerDim; }
+.badge-neutral { @apply bg-surface2 text-textDim border border-border; }
+
+.card {
+  @apply bg-surface border border-border rounded-xl p-5;
+}
+
+.btn {
+  @apply font-body font-semibold text-sm px-5 py-3 rounded-lg transition-colors;
+}
+.btn-primary { @apply bg-accent text-[#062015] hover:bg-[#6FEFB6]; }
+.btn-secondary { @apply bg-transparent border border-border text-text hover:border-accentDim hover:text-accent; }
+.btn-ghost { @apply bg-transparent border border-border text-textDim hover:text-text; }
+.btn-sm { @apply px-3.5 py-2 text-[12.5px] rounded-md; }
+.btn:disabled { @apply opacity-40 cursor-not-allowed; }
+
+.field label { @apply block text-[12.5px] text-textDim mb-1.5 font-medium; }
+.field input, .field select, .field textarea {
+  @apply w-full bg-surface2 border border-border rounded-lg px-3 py-2.5 text-[13.5px] text-text outline-none focus:border-accentDim;
+}
