@@ -1,10 +1,19 @@
 "use client";
-import { useState } from "react";
-import { api } from "@/lib/api";
-import { StatRow } from "@/components/UI";
+import { useState, ChangeEvent, FormEvent } from "react";
+
+interface SellerFormState {
+  projectName: string;
+  developer: string;
+  location: string;
+  methodology: string;
+  projectType: string;
+  volume: number;
+  baselineEmissions: number;
+  registryStandard: string;
+}
 
 export default function SellerPortalPage() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SellerFormState>({
     projectName: "",
     developer: "",
     location: "",
@@ -16,15 +25,19 @@ export default function SellerPortalPage() {
   });
 
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: name === "volume" || name === "baselineEmissions" ? Number(value) : value,
+    }));
   };
 
-  async function handleListingSubmit(e: React.FormEvent) {
+  async function handleListingSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!evidenceFile) {
       setError("Error: Initial verification evidence document or satellite baseline proof is mandatory to list.");
@@ -36,7 +49,6 @@ export default function SellerPortalPage() {
     setSuccessMessage(null);
 
     try {
-      // Simulate cryptographic tokenization and property validation
       setTimeout(() => {
         setSuccessMessage(`Success! Project "${form.projectName}" successfully registered and queued for AI vs. AI audit validation.`);
         setSubmitting(false);
@@ -52,8 +64,9 @@ export default function SellerPortalPage() {
         });
         setEvidenceFile(null);
       }, 1500);
-    } catch (err: any) {
-      setError(err.message || "Failed to list property.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to list property.";
+      setError(errorMessage);
       setSubmitting(false);
     }
   }
