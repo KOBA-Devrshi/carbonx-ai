@@ -92,6 +92,11 @@ export type MatchOut = { credit_id: string; project_name: string; match_score: n
 export type TimelineEvent = { ts: string; stage: string; title: string; detail: string; status: string | null };
 export type BlockchainStatus = { connected: boolean; network: string; contract_address: string | null; tx_hash: string | null; block_number?: number | null; status: string; reason: string | null };
 
+export type DefenderQAResponse = {
+  answer: string;
+  source?: string;
+};
+
 export const api = {
   listCredits: (params?: Record<string, string>) =>
     request<CreditListItem[]>(`/api/credits${params ? "?" + new URLSearchParams(params) : ""}`),
@@ -103,6 +108,12 @@ export const api = {
 
   runAudit: (id: string) => request<AuditResult>(`/api/audit/${id}/run`, { method: "POST" }),
   latestAudit: (id: string) => request<AuditResult>(`/api/audit/${id}/latest`),
+
+  askDefender: (creditId: string, question: string) =>
+    request<DefenderQAResponse>(`/api/credits/${creditId}/ask`, {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
 
   runStressTest: (id: string, inputs: Record<string, number>, scenario_name: string) =>
     request<StressTestResult>(`/api/stress-test/${id}/run`, { method: "POST", body: JSON.stringify({ ...inputs, scenario_name }) }),
