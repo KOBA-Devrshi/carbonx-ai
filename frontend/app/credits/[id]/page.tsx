@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { api, CreditDetail, AuditResult, StressTestResult, PricingOut, TimelineEvent, BlockchainStatus } from "@/lib/api";
+import { api, CreditDetail, AuditResult, StressTestResult, PricingOut, TimelineEvent, BlockchainStatus, DebateTurn } from "@/lib/api";
 import { RiskBadge, StatusBadge, StatRow, TrustBar } from "@/components/UI";
 import { LoadingState, ErrorState } from "@/components/AsyncState";
 
@@ -63,7 +63,7 @@ export default function CreditDetailPage() {
 
       {tab === "overview" && <Overview credit={credit} reload={reload} />}
       {tab === "dna" && <DNA credit={credit} reload={reload} />}
-      {tab === "audit" && <Audit creditId={credit.id} />}
+      {tab === "audit" && <Audit creditId={credit.id} reload={reload} />}
       {tab === "stress" && <Stress creditId={credit.id} riskLevel={credit.risk_level} trust={credit.trust_score} />}
       {tab === "revalidation" && <Revalidation creditId={credit.id} reload={reload} />}
       {tab === "integrity" && <Integrity credit={credit} reload={reload} />}
@@ -213,16 +213,127 @@ function DNA({ credit, reload }: { credit: CreditDetail; reload: () => void }) {
   );
 }
 
-function Audit({ creditId }: { creditId: string }) {
+const PROCESSING_STAGES = [
+  "Analyzing evidence...",
+  "Checking baseline...",
+  "Scanning for anomalies...",
+  "Comparing reported vs. production data...",
+  "Evaluating consistency...",
+];
+
+const SUGGESTED_QUESTIONS = [
+  "Is this credit risky?",
+  "What evidence do you have?",
+  "How could this improve?",
+  "Should I buy it?",
+];
+
+type QAPair = { question: string; answer: string; source: string };
+
+function Audit({ creditId, reload }: { creditId: string; reload: () => void }) {
   const [result, setResult] = useState<AuditResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stageText, setStageText] = useState<string | null>(null);
+  const [visibleTurns, setVisibleTurns] = useState<DebateTurn[]>([]);
+  const [typingSpeaker, setTypingSpeaker] = useState<"defender" | "auditor" | null>(null);
+  const [autoLocked, setAutoLocked] = useState(false);
 
-  useEffect(() => { api.latestAudit(creditId).then(setResult).catch(() => {}); }, [creditId]);
+  const [qaHistory, setQaHistory] = useState<QAPair[]>([]);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.latestAudit(creditId).then((r) => {
+      setResult(r);
+      setVisibleTurns(r.debate_turns && r.debate_turns.length > 0
+        ? r.debate_turns
+        : [
+            { speaker: "defender" as const, text: r.defender_statement },
+            { speaker: "auditor" as const, text: r.auditor_statement },
+          ]);
+    }).catch(() => {});
+  }, [creditId]);
+
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
   async function run() {
-    setBusy(true); setError(null);
-    try { setResult(await api.runAudit(creditId)); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    setVisibleTurns([]);
+    setTypingSpeaker(null);
+    setQaHistory([]);
+    setAutoLocked(false);
+
+    let stageIndex = 0;
+    setStageText(PROCESSING_STAGES[0]);
+    const stageInterval = setInterval(() => {
+      stageIndex = (stageIndex + 1) % PROCESSING_STAGES.length;
+      setStageText(PROCESSING_STAGES[stageIndex]);
+    }, 550);
+
+    try {
+      const fullResult = await api.runAudit(creditId);
+      clearInterval(stageInterval);
+      setStageText(null);
+
+      const turns: DebateTurn[] =
+        fullResult.debate_turns && fullResult.debate_turns.length > 0
+          ? fullResult.debate_turns
+          : [
+              { speaker: "defender" as const, text: fullResult.defender_statement },
+              { speaker: "auditor" as const, text: fullResult.auditor_statement },
+            ];
+
+      for (const turn of turns) {
+        setTypingSpeaker(turn.speaker);
+        await sleep(700 + Math.random() * 500);
+        setTypingSpeaker(null);
+        setVisibleTurns((prev) => [...prev, turn]);
+        await sleep(150);
+      }
+
+      setResult(fullResult);
+
+      if (fullResult.recommendation === "REJECT") {
+        try {
+          const topFinding = fullResult.findings?.[0]?.description || "Critical anomaly detected by AI Auditor.";
+          await api.flagIntegrity(
+            creditId,
+            `Auto-locked by AI Auditor: REJECT verdict at ${fullResult.confidence_score}% confidence. ${topFinding}`,
+            "AI Auditor (auto)"
+          );
+          setAutoLocked(true);
+          reload();
+        } catch {
+        }
+      }
+    } catch (e: any) {
+      clearInterval(stageInterval);
+      setStageText(null);
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function askQuestion(q: string) {
+    if (!q.trim() || asking) return;
+    setAsking(true);
+    setAskError(null);
+    try {
+      const res = await api.askDefender(creditId, q);
+      setQaHistory((prev) => [...prev, { question: q, answer: res.answer, source: res.source }]);
+      setQuestion("");
+    } catch (e: any) {
+      setAskError(e.message);
+    } finally {
+      setAsking(false);
+    }
   }
 
   return (
@@ -230,30 +341,42 @@ function Audit({ creditId }: { creditId: string }) {
       <div className="flex justify-between items-center flex-wrap gap-3">
         <div>
           <div className="font-sans font-semibold">AI vs AI Carbon Audit</div>
-          <div className="text-textDim text-[13px]">The Defender argues the claim is supported; the Auditor challenges it point by point, grounded in real anomaly checks (plus an IsolationForest anomaly score) against this credit's data.</div>
+          <div className="text-textDim text-[13px]">The Defender argues the claim is supported; the Auditor challenges it point by point. A REJECT verdict automatically triggers the Integrity Lock — enforced by the backend, not just shown in the UI.</div>
         </div>
-        <button className="btn btn-primary btn-sm" disabled={busy} onClick={run}>{result ? "Re-run audit" : "Start audit"}</button>
+        <button className="btn btn-primary btn-sm" disabled={busy} onClick={run}>{result || visibleTurns.length ? "Re-run audit" : "Start audit"}</button>
       </div>
 
       {error && <div className="text-danger text-[12.5px] mt-3">{error}</div>}
 
-      {result && (
-        <>
-          <div className="flex justify-between items-center mt-4 mb-1">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-textFaint">Debate transcript</span>
-            <span className={`badge ${result.narrative_source === "llm" ? "badge-low" : "badge-neutral"}`}>
-              {result.narrative_source === "llm" ? "AI-narrated" : "Deterministic"}
-            </span>
+      {autoLocked && (
+        <div className="mt-4 px-4 py-3 rounded-lg bg-danger/10 border border-dangerDim flex items-center gap-2">
+          <span className="text-danger">🔒</span>
+          <div className="text-[13px] text-danger">
+            <span className="font-semibold">Integrity Lock auto-triggered.</span> The AI Auditor's REJECT verdict has restricted trading on this credit — check the Integrity Lock tab. This was enforced by the backend, not a display-only warning.
           </div>
+        </div>
+      )}
+
+      {busy && stageText && (
+        <div className="mt-4 flex items-center gap-2 text-textDim text-[12.5px] font-mono">
+          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          {stageText}
+        </div>
+      )}
+
+      {(visibleTurns.length > 0 || typingSpeaker) && (
+        <>
+          {result && (
+            <div className="flex justify-between items-center mt-4 mb-1">
+              <span className="font-mono text-[10px] uppercase tracking-wide text-textFaint">Debate transcript</span>
+              <span className={`badge ${result.narrative_source === "llm" ? "badge-low" : "badge-neutral"}`}>
+                {result.narrative_source === "llm" ? "AI-narrated" : "Deterministic"}
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 my-3">
-            {(result.debate_turns && result.debate_turns.length > 0
-              ? result.debate_turns
-              : [
-                  { speaker: "defender" as const, text: result.defender_statement },
-                  { speaker: "auditor" as const, text: result.auditor_statement },
-                ]
-            ).map((turn, i) => {
+            {visibleTurns.map((turn, i) => {
               const isDefender = turn.speaker === "defender";
               return (
                 <div
@@ -271,17 +394,96 @@ function Audit({ creditId }: { creditId: string }) {
                 </div>
               );
             })}
+
+            {typingSpeaker && (
+              <div
+                className={`max-w-[40%] p-3 rounded-xl border text-[12px] ${
+                  typingSpeaker === "defender"
+                    ? "self-start border-accentDim bg-surface2 text-accent"
+                    : "self-end border-dangerDim bg-surface2 text-danger"
+                }`}
+              >
+                <span className="font-mono text-[10px] uppercase">
+                  {typingSpeaker === "defender" ? "AI Defender" : "AI Auditor"} is typing
+                  <span className="inline-block animate-pulse">...</span>
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-            <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Result</div><div className="font-sans text-lg font-semibold mt-1.5">{result.recommendation}</div></div>
-            <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Confidence</div><div className="font-sans text-lg font-semibold mt-1.5">{result.confidence_score}%</div></div>
-            <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Risk</div><div className="font-sans text-lg font-semibold mt-1.5">{result.risk_level}</div></div>
-            <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Anomaly Score</div><div className="font-sans text-lg font-semibold mt-1.5">{result.anomaly_score ?? "n/a"}</div></div>
+          {result && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Result</div><div className={`font-sans text-lg font-semibold mt-1.5 ${result.recommendation === "REJECT" ? "text-danger" : ""}`}>{result.recommendation}</div></div>
+              <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Confidence</div><div className="font-sans text-lg font-semibold mt-1.5">{result.confidence_score}%</div></div>
+              <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Risk</div><div className="font-sans text-lg font-semibold mt-1.5">{result.risk_level}</div></div>
+              <div className="card"><div className="font-mono text-[11px] uppercase text-textFaint">Anomaly Score</div><div className="font-sans text-lg font-semibold mt-1.5">{result.anomaly_score ?? "n/a"}</div></div>
+            </div>
+          )}
+
+          <div className="mt-6 pt-5 border-t border-border">
+            <div className="font-sans font-semibold text-[14px] mb-1">Ask the Defender</div>
+            <div className="text-textDim text-[12.5px] mb-3">
+              Ask anything about this credit — the answer is grounded in the audit above, not a generic chatbot.
+            </div>
+
+            <div className="flex gap-2 flex-wrap mb-3">
+              {SUGGESTED_QUESTIONS.map((sq) => (
+                <button
+                  key={sq}
+                  className="btn btn-ghost btn-sm"
+                  disabled={asking}
+                  onClick={() => askQuestion(sq)}
+                >
+                  {sq}
+                </button>
+              ))}
+            </div>
+
+            {qaHistory.length > 0 && (
+              <div className="flex flex-col gap-3 mb-3">
+                {qaHistory.map((qa, i) => (
+                  <div key={i} className="flex flex-col gap-1.5">
+                    <div className="self-end max-w-[85%] px-3 py-2 rounded-lg bg-accent/10 border border-accentDim text-[13px]">
+                      {qa.question}
+                    </div>
+                    <div className="self-start max-w-[85%] px-3 py-2.5 rounded-lg bg-surface2 border border-border text-[13px] leading-relaxed">
+                      <span className="block font-mono text-[9.5px] uppercase text-accent mb-1">
+                        AI Defender {qa.source === "llm" ? "· AI-narrated" : "· deterministic"}
+                      </span>
+                      {qa.answer}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {asking && (
+              <div className="text-textDim text-[12px] font-mono mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                Defender is thinking...
+              </div>
+            )}
+            {askError && <div className="text-danger text-[12px] mb-2">{askError}</div>}
+
+            <div className="flex gap-2">
+              <input
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") askQuestion(question); }}
+                placeholder="Ask your own question..."
+                className="flex-1 bg-surface2 border border-border rounded-lg px-3 py-2 text-[13px] outline-none focus:border-accentDim"
+              />
+              <button className="btn btn-primary btn-sm" disabled={asking} onClick={() => askQuestion(question)}>
+                Ask
+              </button>
+            </div>
           </div>
         </>
       )}
-      {!result && <div className="text-textFaint text-center py-10">No audit has been run yet for this credit.</div>}
+
+      {!busy && !result && visibleTurns.length === 0 && (
+        <div className="text-textFaint text-center py-10">No audit has been run yet for this credit.</div>
+      )}
     </div>
   );
 }
