@@ -327,7 +327,7 @@ function Audit({ creditId, reload }: { creditId: string; reload: () => void }) {
     setAskError(null);
     try {
       const res = await api.askDefender(creditId, q);
-      setQaHistory((prev) => [...prev, { question: q, answer: res.answer, source: res.source }]);
+      setQaHistory((prev) => [...prev, { question: q, answer: res.answer, source: res.source || "System Defender" }]);
       setQuestion("");
     } catch (e: any) {
       setAskError(e.message);
@@ -352,7 +352,7 @@ function Audit({ creditId, reload }: { creditId: string; reload: () => void }) {
         <div className="mt-4 px-4 py-3 rounded-lg bg-danger/10 border border-dangerDim flex items-center gap-2">
           <span className="text-danger">🔒</span>
           <div className="text-[13px] text-danger">
-            <span className="font-semibold">Integrity Lock auto-triggered.</span> The AI Auditor's REJECT verdict has restricted trading on this credit — check the Integrity Lock tab. This was enforced by the backend, not a display-only warning.
+            <span className="font-semibold">Integrity Lock auto-triggered.</span> The AI Auditor&apos;s REJECT verdict has restricted trading on this credit — check the Integrity Lock tab. This was enforced by the backend, not a display-only warning.
           </div>
         </div>
       )}
